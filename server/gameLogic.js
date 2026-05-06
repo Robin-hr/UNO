@@ -19,7 +19,8 @@ export const createDeck = () => {
   });
 
   // Add wild cards
-  wildCards.forEach(wild => {
+  const wildTypes = ['wild', 'wild', 'wild4', 'wild4', 'wildSwap', 'wildShuffle'];
+  wildTypes.forEach(wild => {
     deck.push({ color: 'any', value: wild, type: 'wild', id: Math.random().toString(36).substr(2, 9) });
   });
 

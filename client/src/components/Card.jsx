@@ -19,6 +19,8 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
     if (value === 'draw2') return '+2';
     if (value === 'wild4') return '+4';
     if (value === 'wild') return 'W';
+    if (value === 'wildSwap') return '⇄✋';
+    if (value === 'wildShuffle') return '🔀✋';
     return value;
   };
 

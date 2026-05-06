@@ -24,6 +24,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   const [showUnoBtn, setShowUnoBtn] = useState(false);
   const [unoCountdown, setUnoCountdown] = useState(2);
   const [unoNotif, setUnoNotif] = useState(null);
+  const [swapOptions, setSwapOptions] = useState(null);
   
   const unoTimerRef = useRef(null);
   const unoCountRef = useRef(null);
@@ -71,12 +72,17 @@ const GameBoard = ({ gameState, socket, roomId }) => {
       setTimeout(() => setUnoNotif(null), 2500);
     });
 
+    socket.on('pick_swap_target', ({ players }) => {
+      setSwapOptions(players);
+    });
+
     return () => {
       socket.off('game_over');
       socket.off('time_update');
       socket.off('uno_required');
       socket.off('uno_called');
       socket.off('uno_penalty');
+      socket.off('pick_swap_target');
       if (unoTimerRef.current) clearTimeout(unoTimerRef.current);
       if (unoCountRef.current) clearInterval(unoCountRef.current);
     };
@@ -99,7 +105,8 @@ const GameBoard = ({ gameState, socket, roomId }) => {
       setTimeout(() => setUnoNotif(null), 2000);
       return;
     }
-    if (card.type === 'wild' || card.value === 'wild4') {
+    
+    if (card.value === 'wild' || card.value === 'wild4' || card.value === 'wildSwap' || card.value === 'wildShuffle') {
       setSelectedCardId(card.id);
       setShowColorPicker(true);
     } else {
@@ -335,6 +342,26 @@ const GameBoard = ({ gameState, socket, roomId }) => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                 {[{ c: 'red', b: '#ef4444' }, { c: 'blue', b: '#3b82f6' }, { c: 'green', b: '#22c55e' }, { c: 'yellow', b: '#eab308' }].map(item => (
                   <motion.div key={item.c} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => selectColor(item.c)} style={{ width: '120px', height: '120px', borderRadius: '24px', background: item.b, border: '6px solid white', cursor: 'pointer', boxShadow: '0 10px 20px rgba(0,0,0,0.3)' }} />
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Swap Modal */}
+      <AnimatePresence>
+        {swapOptions && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, backdropFilter: 'blur(12px)' }}>
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ background: '#0f172a', borderRadius: '40px', padding: '50px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 50px 100px rgba(0,0,0,0.8)', minWidth: '400px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 900, marginBottom: '20px', letterSpacing: '3px', color: 'white' }}>SWAP HANDS</h2>
+              <p style={{ color: '#94a3b8', marginBottom: '40px', fontWeight: 700 }}>CHOOSE A PLAYER TO SWAP CARDS WITH!</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {swapOptions.map(p => (
+                  <motion.button key={p.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    onClick={() => { socket.emit('swap_hands', { roomId, targetPlayerId: p.id }); setSwapOptions(null); }}
+                    style={{ padding: '20px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontWeight: 800, fontSize: '18px', cursor: 'pointer' }}>
+                    {p.name}
+                  </motion.button>
                 ))}
               </div>
             </motion.div>

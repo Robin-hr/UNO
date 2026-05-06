@@ -108,16 +108,26 @@ io.on('connection', (socket) => {
 
     const deck = createDeck();
     const { hands, remainingDeck } = dealCards(deck, room.players);
-    let topCardIndex = remainingDeck.findIndex(c => c.type === 'number');
+    let topCardIndex = remainingDeck.findIndex(c => c.value !== 'wild4' && c.value !== 'wildSwap' && c.value !== 'wildShuffle');
     const topCard = remainingDeck.splice(topCardIndex, 1)[0];
+    
+    // Initial Action Handling
+    let initialIndex = 0;
+    let initialDirection = 1;
+    let initialPending = 0;
+
+    if (topCard.value === 'skip') initialIndex = 1;
+    if (topCard.value === 'reverse') { initialDirection = -1; initialIndex = room.players.length - 1; }
+    if (topCard.value === 'draw2') { initialPending = 2; }
 
     room.gameState = {
       deck: remainingDeck,
       hands,
       topCard,
-      currentPlayerIndex: 0,
-      direction: 1,
-      playedCards: [topCard]
+      currentPlayerIndex: initialIndex,
+      direction: initialDirection,
+      playedCards: [topCard],
+      pendingDraws: initialPending
     };
     room.gameStarted = true;
 
@@ -140,7 +150,17 @@ io.on('connection', (socket) => {
     if (cardIndex === -1) return;
     const card = playerHand[cardIndex];
 
-      if (isValidMove(card, gameState.topCard)) {
+    // --- STACKING RULE CHECK ---
+    if (gameState.pendingDraws > 0) {
+      const isStackingPlus2 = gameState.topCard.value === 'draw2' && card.value === 'draw2';
+      const isStackingPlus4 = card.value === 'wild4'; // +4 can be played on +2 or +4
+      
+      if (!isStackingPlus2 && !isStackingPlus4) {
+        return socket.emit('error', `You must play a +2 or +4 to stack, or draw ${gameState.pendingDraws} cards!`);
+      }
+    }
+
+    if (isValidMove(card, gameState.topCard)) {
       playerHand.splice(cardIndex, 1);
       if (card.type === 'wild' || card.value === 'wild4') {
         card.color = colorSelection || 'red';
@@ -195,11 +215,40 @@ io.on('connection', (socket) => {
     const gameState = room.gameState;
     if (room.players[gameState.currentPlayerIndex].id !== socket.id) return;
 
-    const drawnCard = drawCardForPlayer(room, socket.id);
-    if (!isValidMove(drawnCard, gameState.topCard)) {
+    if (gameState.pendingDraws > 0) {
+      // Must draw the entire stack
+      for (let i = 0; i < gameState.pendingDraws; i++) {
+        drawCardForPlayer(room, socket.id);
+      }
+      gameState.pendingDraws = 0;
+      // Skip turn after drawing stack
       gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    } else {
+      const drawnCard = drawCardForPlayer(room, socket.id);
+      if (!isValidMove(drawnCard, gameState.topCard)) {
+        gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+      }
     }
 
+    updateAllPlayers(roomId);
+    checkBotTurn(roomId);
+  });
+
+  socket.on('swap_hands', ({ roomId, targetPlayerId }) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameStarted) return;
+    const gameState = room.gameState;
+    if (room.players[gameState.currentPlayerIndex].id !== socket.id) return;
+
+    // Swap logic
+    const myHand = [...gameState.hands[socket.id]];
+    const targetHand = [...gameState.hands[targetPlayerId]];
+    gameState.hands[socket.id] = targetHand;
+    gameState.hands[targetPlayerId] = myHand;
+
+    // Advance turn
+    gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    
     updateAllPlayers(roomId);
     checkBotTurn(roomId);
   });
@@ -225,16 +274,44 @@ io.on('connection', (socket) => {
       if (room.players.length === 2) skipNext = true;
       else gameState.direction *= -1;
     }
-    let nextIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    
+    // Add to stack instead of drawing immediately
     if (card.value === 'draw2') {
-      drawCardForPlayer(room, room.players[nextIndex].id);
-      drawCardForPlayer(room, room.players[nextIndex].id);
-      skipNext = true;
+      gameState.pendingDraws += 2;
     }
     if (card.value === 'wild4') {
-      for (let i = 0; i < 4; i++) drawCardForPlayer(room, room.players[nextIndex].id);
-      skipNext = true;
+      gameState.pendingDraws += 4;
     }
+
+    if (card.value === 'wildShuffle') {
+      // Collect all cards
+      let allCards = [];
+      room.players.forEach(p => {
+        allCards.push(...gameState.hands[p.id]);
+        gameState.hands[p.id] = [];
+      });
+      // Shuffle them
+      for (let i = allCards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allCards[i], allCards[j]] = [allCards[j], allCards[i]];
+      }
+      // Redistribute
+      let pIdx = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+      while (allCards.length > 0) {
+        gameState.hands[room.players[pIdx].id].push(allCards.pop());
+        pIdx = (pIdx + gameState.direction + room.players.length) % room.players.length;
+      }
+    }
+
+    if (card.value === 'wildSwap') {
+      // We need to tell the client to pick a player to swap with
+      io.to(socket.id).emit('pick_swap_target', { 
+        players: room.players.filter(p => p.id !== socket.id).map(p => ({ id: p.id, name: p.name })) 
+      });
+      // Note: We don't advance the turn yet. The 'swap_hands' event will do it.
+      return; 
+    }
+
     gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
     if (skipNext) {
       gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
