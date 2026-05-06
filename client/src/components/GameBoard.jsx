@@ -29,7 +29,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   const unoTimerRef = useRef(null);
   const unoCountRef = useRef(null);
 
-  const { topCard, currentPlayerId, hand, playerCounts } = gameState;
+  const { topCard, currentPlayerId, hand = [], playerCounts = [] } = gameState || {};
   const isMyTurn = currentPlayerId === socket.id;
 
   useEffect(() => {
@@ -271,7 +271,9 @@ const GameBoard = ({ gameState, socket, roomId }) => {
             {/* Fanned cards */}
             <div style={{ position: 'relative', width: '100px', height: '60px' }}>
               {Array.from({ length: Math.min(player.count, 6) }).map((_, i) => (
-                <div key={i} className="uno-card card-back" style={{ width: '35px', height: '55px', position: 'absolute', left: i * 10, zIndex: i, transform: `rotate(${(i - 2) * 6}deg)`, border: '2px solid white' }} />
+                <div key={i} style={{ position: 'absolute', left: i * 12, zIndex: i, transform: `rotate(${(i - 2) * 8}deg)` }}>
+                   <Card isBack style={{ width: '40px', height: '60px', borderWidth: '2px' }} />
+                </div>
               ))}
             </div>
           </div>
