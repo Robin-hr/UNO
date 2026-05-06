@@ -4,6 +4,7 @@ import { Users, Play, LogIn, Plus, Copy, CheckCircle2, User as UserIcon, Bot, Gl
 import { motion, AnimatePresence } from 'framer-motion';
 import GameBoard from './components/GameBoard';
 import Login from './components/Login';
+import LoadingScreen from './components/LoadingScreen';
 
 const socket = io(); // Connects to the same host that serves the page
 
@@ -149,6 +150,7 @@ const s = {
 };
 
 export default function App() {
+  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [roomIdInput, setRoomIdInput] = useState('');
   const [roomData, setRoomData] = useState(null);
@@ -159,6 +161,8 @@ export default function App() {
   const [view, setView] = useState('home');
 
   useEffect(() => {
+    setTimeout(() => setLoading(false), 3000);
+
     const savedUser = localStorage.getItem('uno_user');
     if (savedUser) setUser(JSON.parse(savedUser));
 
@@ -178,81 +182,110 @@ export default function App() {
   const handleStart = () => socket.emit('start_game', { roomId: roomData.roomId });
   const copyId = () => { navigator.clipboard.writeText(roomData.roomId); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
-  if (!user) return <Login onLogin={setUser} />;
-  if (gameState) return <GameBoard gameState={gameState} socket={socket} roomId={roomData.roomId} />;
+  if (copied) {} // dummy to keep eslint happy if needed
 
-  /* ── LOBBY ── */
-  if (isJoined) {
-    const isSolo = roomData.roomId.startsWith('SOLO-');
-    return (
-      <div style={s.root}>
-        <FloatingCard color={COLORS.red} label="7" top="8%" left="6%" rotate={-18} delay={0} />
-        <FloatingCard color={COLORS.blue} label="+2" top="12%" right="8%" rotate={14} delay={1} />
-        <FloatingCard color={COLORS.green} label="0" bottom="12%" left="5%" rotate={8} delay={1.5} />
-        <FloatingCard color={COLORS.yellow} label="Wild" bottom="15%" right="6%" rotate={-12} delay={0.5} />
+  return (
+    <AnimatePresence mode="wait">
+      {loading ? (
+        <LoadingScreen key="loading" />
+      ) : !user ? (
+        <Login key="login" onLogin={setUser} />
+      ) : gameState ? (
+        <GameBoard key="game" gameState={gameState} socket={socket} roomId={roomData?.roomId} />
+      ) : isJoined ? (
+        <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={s.root}>
+          <FloatingCard color={COLORS.red} label="7" top="8%" left="6%" rotate={-18} delay={0} />
+          <FloatingCard color={COLORS.blue} label="+2" top="12%" right="8%" rotate={14} delay={1} />
+          <FloatingCard color={COLORS.green} label="0" bottom="12%" left="5%" rotate={8} delay={1.5} />
+          <FloatingCard color={COLORS.yellow} label="Wild" bottom="15%" right="6%" rotate={-12} delay={0.5} />
 
-        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
-          <motion.div style={s.logo} initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 10 }}>UNO</motion.div>
-          <p style={s.subtitle}>{isSolo ? '🤖 Solo vs AI' : '🌐 Multiplayer Lobby'}</p>
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
+            <motion.div style={s.logo} initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 10 }}>UNO</motion.div>
+            <p style={s.subtitle}>{roomData?.roomId?.startsWith('SOLO-') ? '🤖 Solo vs AI' : '🌐 Multiplayer Lobby'}</p>
 
-          <div style={s.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>{isSolo ? 'Solo Match' : 'Room Lobby'}</div>
-                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                  <Users size={13} /> {roomData.players.length} / 8 players
+            <div style={s.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>Room Lobby</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+                    <Users size={13} /> {roomData.players.length} / 8 players
+                  </div>
+                </div>
+                {!roomData.roomId.startsWith('SOLO-') && (
+                  <div style={s.roomChip} onClick={copyId}>
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>ROOM</span>
+                    <span style={{ color: '#60a5fa', letterSpacing: 3 }}>{roomData.roomId}</span>
+                    {copied ? <CheckCircle2 size={16} color="#4ade80" /> : <Copy size={16} color="rgba(255,255,255,0.4)" />}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 22 }}>
+                {roomData.players.map(player => (
+                  <div key={player.id} style={{ ...s.playerBadge, border: player.id === socket.id ? '1.5px solid rgba(99,102,241,0.5)' : s.playerBadge.border }}>
+                    {player.isBot ? <Bot size={13} color="#c084fc" /> : <UserIcon size={13} color={player.host ? '#facc15' : 'rgba(255,255,255,0.4)'} />}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.name}</span>
+                  </div>
+                ))}
+              </div>
+
+              {error && <div style={{ ...s.error, marginBottom: 14 }}>⚠️ {error}</div>}
+
+              <button style={s.btnStart} onClick={handleStart}>
+                <Play size={22} fill="white" /> Start Game
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : (
+        <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={s.root}>
+          <FloatingCard color={COLORS.red} label="7" top="8%" left="5%" rotate={-20} delay={0} />
+          <FloatingCard color={COLORS.blue} label="+2" top="14%" right="7%" rotate={15} delay={1.2} />
+          <FloatingCard color={COLORS.green} label="0" bottom="10%" left="4%" rotate={10} delay={0.7} />
+          <FloatingCard color={COLORS.yellow} label="Wild" bottom="14%" right="5%" rotate={-12} delay={2.1} />
+
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
+            <motion.div style={s.logo}>UNO</motion.div>
+            <p style={s.subtitle}>The Ultimate Multiplayer Card Game</p>
+
+            <div style={s.card}>
+              <div style={{ marginBottom: 24, textAlign: 'center' }}>
+                <div style={{ ...s.label, marginBottom: 4 }}>PLAYER SESSION</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: '#60a5fa', letterSpacing: 1, textTransform: 'uppercase' }}>
+                  {user.username}
                 </div>
               </div>
-              {!isSolo && (
-                <div style={s.roomChip} onClick={copyId}>
-                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>ROOM</span>
-                  <span style={{ color: '#60a5fa', letterSpacing: 3 }}>{roomData.roomId}</span>
-                  {copied ? <CheckCircle2 size={16} color="#4ade80" /> : <Copy size={16} color="rgba(255,255,255,0.4)" />}
-                </div>
+
+              <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+                <button style={s.btnSolo} onClick={handleSolo}>
+                  <Bot size={26} color="#c084fc" />
+                  Solo Practice
+                </button>
+                <button style={s.btnMulti} onClick={() => setView('multiplayer')}>
+                  <Globe size={26} />
+                  Play Online
+                </button>
+              </div>
+
+              {view === 'multiplayer' && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}>
+                  <div style={s.divider} />
+                  <button style={s.btnAction} onClick={handleCreate}><Plus size={18} /> Create New Room</button>
+                  <div style={s.joinRow}>
+                    <input style={s.joinInput} placeholder="ROOM ID" value={roomIdInput} onChange={e => setRoomIdInput(e.target.value.toUpperCase())} />
+                    <button style={s.btnJoin} onClick={handleJoin}><LogIn size={18} /> Join</button>
+                  </div>
+                </motion.div>
               )}
+
+              {error && <div style={s.error}>⚠️ {error}</div>}
             </div>
-
-            {/* Players grid — Showing all 8 slots */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gridTemplateRows: 'repeat(2, 1fr)', gap: 8, marginBottom: 22 }}>
-              {roomData.players.map(player => (
-                <div key={player.id} style={{ ...s.playerBadge, border: player.id === socket.id ? '1.5px solid rgba(99,102,241,0.5)' : s.playerBadge.border, background: player.id === socket.id ? 'rgba(99,102,241,0.1)' : s.playerBadge.background }}>
-                  {player.isBot ? <Bot size={13} color="#c084fc" /> : <UserIcon size={13} color={player.host ? '#facc15' : 'rgba(255,255,255,0.4)'} />}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.name}</span>
-                </div>
-              ))}
-              {/* Fill the rest with "Waiting" slots up to 8 total */}
-              {Array.from({ length: Math.max(0, 8 - roomData.players.length) }).map((_, i) => (
-                <div key={`empty-${i}`} style={{ ...s.playerBadge, border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.15)' }}>
-                  <UserIcon size={13} /> Waiting…
-                </div>
-              ))}
-            </div>
-
-            {error && <div style={{ ...s.error, marginBottom: 14 }}>⚠️ {error}</div>}
-
-            <button style={s.btnStart} onClick={handleStart}
-              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
-              <Play size={22} fill="white" /> Start Game
-            </button>
-          </div>
+          </motion.div>
         </motion.div>
-      </div>
-    );
-  }
-
-  /* ── HOME ── */
-  return (
-    <div style={s.root}>
-      <FloatingCard color={COLORS.red} label="7" top="8%" left="5%" rotate={-20} delay={0} />
-      <FloatingCard color={COLORS.blue} label="+2" top="14%" right="7%" rotate={15} delay={1.2} />
-      <FloatingCard color={COLORS.green} label="0" bottom="10%" left="4%" rotate={10} delay={0.7} />
-      <FloatingCard color={COLORS.yellow} label="Wild" bottom="14%" right="5%" rotate={-12} delay={2.1} />
-      <FloatingCard color={COLORS.black} label="UNO" top="48%" left="2%" rotate={-5} delay={1.8} />
-      <FloatingCard color={COLORS.red} label="Skip" top="38%" right="2%" rotate={8} delay={0.3} />
-
-      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
+      )}
+    </AnimatePresence>
+  );
+}
 
         <motion.div style={s.logo}
           initial={{ scale: 0.5, rotate: -10 }}
