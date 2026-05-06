@@ -1,0 +1,18 @@
+services:
+  server:
+    image: hebrusrobin/uno-server:latest
+    build: ./server
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+    restart: always
+
+  client:
+    image: hebrusrobin/uno-client:latest
+    build: ./client
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: always

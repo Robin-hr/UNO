@@ -1,0 +1,321 @@
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import { createDeck, dealCards, isValidMove, shuffle } from './gameLogic.js';
+
+const app = express();
+app.use(cors());
+
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: "*", methods: ["GET", "POST"] }
+});
+
+const PORT = process.env.PORT || 3001;
+const rooms = new Map();
+
+// ── Point values ──────────────────────────────────────────────────────────────
+const cardPoints = (card) => {
+  if (card.value === 'wild' || card.value === 'wild4') return 50;
+  if (['skip', 'reverse', 'draw2'].includes(card.value)) return 20;
+  return parseInt(card.value, 10) || 0;  // number cards = face value
+};
+
+const calculateHandPoints = (hand) =>
+  hand.reduce((sum, card) => sum + cardPoints(card), 0);
+
+// ── Time-limit winner ─────────────────────────────────────────────────────────
+const resolveByPoints = (roomId) => {
+  const room = rooms.get(roomId);
+  if (!room || !room.gameStarted) return;
+
+  const scores = room.players.map(p => ({
+    name: p.name,
+    points: calculateHandPoints(room.gameState.hands[p.id])
+  }));
+
+  scores.sort((a, b) => a.points - b.points);
+  const winner = scores[0];
+
+  io.to(roomId).emit('game_over', {
+    winner: winner.name,
+    byPoints: true,
+    scores
+  });
+  room.gameStarted = false;
+  clearTimeout(room.timer);
+};
+
+// ── Start 5-min countdown ─────────────────────────────────────────────────────
+const startGameTimer = (roomId) => {
+  const room = rooms.get(roomId);
+  const GAME_DURATION = 5 * 60 * 1000; // 5 minutes
+  const startTime = Date.now();
+
+  // Send time_update every second
+  room.timerInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    const remaining = Math.max(0, GAME_DURATION - elapsed);
+    io.to(roomId).emit('time_update', { remaining });
+    if (remaining === 0) clearInterval(room.timerInterval);
+  }, 1000);
+
+  // Resolve when time is up
+  room.timer = setTimeout(() => {
+    clearInterval(room.timerInterval);
+    resolveByPoints(roomId);
+  }, GAME_DURATION);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+io.on('connection', (socket) => {
+
+  socket.on('create_room', ({ playerName }) => {
+    const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const player = { id: socket.id, name: playerName, host: true };
+    rooms.set(roomId, { players: [player], gameStarted: false });
+    socket.join(roomId);
+    socket.emit('room_created', { roomId, players: [player] });
+  });
+
+  socket.on('create_solo_room', ({ playerName }) => {
+    const roomId = "SOLO-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+    const player = { id: socket.id, name: playerName, host: true };
+    const bot = { id: 'bot-1', name: 'Bot-1', host: false, isBot: true };
+    rooms.set(roomId, { players: [player, bot], gameStarted: false, isSolo: true });
+    socket.join(roomId);
+    socket.emit('room_created', { roomId, players: [player, bot] });
+  });
+
+  socket.on('start_game', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.players[0].id !== socket.id) return;
+
+    const deck = createDeck();
+    const { hands, remainingDeck } = dealCards(deck, room.players);
+    let topCardIndex = remainingDeck.findIndex(c => c.type === 'number');
+    const topCard = remainingDeck.splice(topCardIndex, 1)[0];
+
+    room.gameState = {
+      deck: remainingDeck,
+      hands,
+      topCard,
+      currentPlayerIndex: 0,
+      direction: 1,
+      playedCards: [topCard]
+    };
+    room.gameStarted = true;
+
+    updateAllPlayers(roomId);
+    startGameTimer(roomId);   // ← start 5-minute clock
+    checkBotTurn(roomId);
+  });
+
+  socket.on('play_card', ({ roomId, cardId, colorSelection }) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameStarted) return;
+    const gameState = room.gameState;
+    if (room.players[gameState.currentPlayerIndex].id !== socket.id) return;
+
+    const playerHand = gameState.hands[socket.id];
+    const cardIndex = playerHand.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) return;
+    const card = playerHand[cardIndex];
+
+      if (isValidMove(card, gameState.topCard)) {
+      playerHand.splice(cardIndex, 1);
+      if (card.type === 'wild' || card.value === 'wild4') {
+        card.color = colorSelection || 'red';
+      }
+      gameState.topCard = card;
+      gameState.playedCards.push(card);
+      handleSpecialEffects(room, card);
+
+      if (playerHand.length === 0) {
+        clearTimeout(room.timer);
+        clearInterval(room.timerInterval);
+        io.to(roomId).emit('game_over', { winner: room.players.find(p => p.id === socket.id).name });
+        room.gameStarted = false;
+        return;
+      }
+
+      // UNO rule: player dropped to 1 card — start 2s window
+      if (playerHand.length === 1) {
+        room.unoCalled = false;
+        room.unoPlayerId = socket.id;
+        io.to(roomId).emit('uno_required', { playerId: socket.id });
+
+        room.unoTimer = setTimeout(() => {
+          // Missed UNO call — draw 2 penalty cards
+          if (!room.unoCalled && room.gameStarted) {
+            drawCardForPlayer(room, socket.id);
+            drawCardForPlayer(room, socket.id);
+            io.to(roomId).emit('uno_penalty', { playerId: socket.id });
+            updateAllPlayers(roomId);
+          }
+        }, 2000);
+      }
+
+      updateAllPlayers(roomId);
+      checkBotTurn(roomId);
+    }
+  });
+
+  socket.on('call_uno', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    if (room.unoPlayerId === socket.id) {
+      room.unoCalled = true;
+      clearTimeout(room.unoTimer);
+      io.to(roomId).emit('uno_called', { playerId: socket.id });
+    }
+  });
+
+  socket.on('draw_card', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameStarted) return;
+    const gameState = room.gameState;
+    if (room.players[gameState.currentPlayerIndex].id !== socket.id) return;
+
+    const drawnCard = drawCardForPlayer(room, socket.id);
+    if (!isValidMove(drawnCard, gameState.topCard)) {
+      gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    }
+
+    updateAllPlayers(roomId);
+    checkBotTurn(roomId);
+  });
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  function drawCardForPlayer(room, playerId) {
+    const gameState = room.gameState;
+    if (gameState.deck.length < 1) {
+      const top = gameState.playedCards.pop();
+      gameState.deck = shuffle(gameState.playedCards);
+      gameState.playedCards = [top];
+    }
+    const card = gameState.deck.shift();
+    gameState.hands[playerId].push(card);
+    return card;
+  }
+
+  function handleSpecialEffects(room, card) {
+    const gameState = room.gameState;
+    let skipNext = card.value === 'skip';
+    if (card.value === 'reverse') {
+      if (room.players.length === 2) skipNext = true;
+      else gameState.direction *= -1;
+    }
+    let nextIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    if (card.value === 'draw2') {
+      drawCardForPlayer(room, room.players[nextIndex].id);
+      drawCardForPlayer(room, room.players[nextIndex].id);
+      skipNext = true;
+    }
+    if (card.value === 'wild4') {
+      for (let i = 0; i < 4; i++) drawCardForPlayer(room, room.players[nextIndex].id);
+      skipNext = true;
+    }
+    gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    if (skipNext) {
+      gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    }
+  }
+
+  function checkBotTurn(roomId) {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameStarted) return;
+    const nextPlayer = room.players[room.gameState.currentPlayerIndex];
+    if (nextPlayer.isBot) setTimeout(() => performBotMove(roomId), 1500);
+  }
+
+  function performBotMove(roomId) {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameStarted) return;
+    const gameState = room.gameState;
+    const botId = room.players[gameState.currentPlayerIndex].id;
+    const botHand = gameState.hands[botId];
+
+    let cardToPlay = botHand.find(card => isValidMove(card, gameState.topCard));
+
+    if (!cardToPlay) {
+      const drawn = drawCardForPlayer(room, botId);
+      if (isValidMove(drawn, gameState.topCard)) cardToPlay = drawn;
+    }
+
+    if (cardToPlay) {
+      const cardIndex = botHand.findIndex(c => c.id === cardToPlay.id);
+      botHand.splice(cardIndex, 1);
+      if (cardToPlay.type === 'wild' || cardToPlay.value === 'wild4') {
+        const counts = { red: 0, blue: 0, green: 0, yellow: 0 };
+        botHand.forEach(c => { if (counts[c.color] !== undefined) counts[c.color]++; });
+        cardToPlay.color = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+      }
+      gameState.topCard = cardToPlay;
+      gameState.playedCards.push(cardToPlay);
+      handleSpecialEffects(room, cardToPlay);
+
+      if (botHand.length === 0) {
+        clearTimeout(room.timer);
+        clearInterval(room.timerInterval);
+        io.to(roomId).emit('game_over', { winner: room.players.find(p => p.id === botId).name });
+        room.gameStarted = false;
+        return;
+      }
+
+      // Bot auto-calls UNO instantly
+      if (botHand.length === 1) {
+        room.unoCalled = true;
+        room.unoPlayerId = botId;
+        io.to(roomId).emit('uno_called', { playerId: botId });
+      }
+
+    } else {
+      gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
+    }
+
+    updateAllPlayers(roomId);
+    checkBotTurn(roomId);
+  }
+
+  function updateAllPlayers(roomId) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.players.forEach(player => {
+      if (player.isBot) return;
+      const state = {
+        topCard: room.gameState.topCard,
+        currentPlayerId: room.players[room.gameState.currentPlayerIndex].id,
+        hand: room.gameState.hands[player.id],
+        playerCounts: room.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          count: room.gameState.hands[p.id].length
+        }))
+      };
+      io.to(player.id).emit('game_update', state);
+    });
+  }
+
+  socket.on('disconnect', () => {
+    for (const [roomId, room] of rooms.entries()) {
+      const idx = room.players.findIndex(p => p.id === socket.id);
+      if (idx !== -1) {
+        room.players.splice(idx, 1);
+        if (room.players.filter(p => !p.isBot).length === 0) {
+          clearTimeout(room.timer);
+          clearInterval(room.timerInterval);
+          rooms.delete(roomId);
+        } else {
+          io.to(roomId).emit('player_left', { players: room.players });
+        }
+        break;
+      }
+    }
+  });
+});
+
+httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -1,0 +1,344 @@
+import React, { useState, useEffect, useRef } from 'react';
+import Card from './Card';
+import { motion, AnimatePresence } from 'framer-motion';
+import { User, Bot, Crown, ArrowRight, Star, Timer, Trophy, AlertTriangle } from 'lucide-react';
+import confetti from 'canvas-confetti';
+
+const COLORS = {
+  red: '#ef4444',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  yellow: '#eab308',
+  black: '#18181b',
+  glass: 'rgba(255, 255, 255, 0.05)',
+  glassBorder: 'rgba(255, 255, 255, 0.12)'
+};
+
+const GameBoard = ({ gameState, socket, roomId }) => {
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState(null);
+  const [winner, setWinner] = useState(null);
+  const [winByPoints, setWinByPoints] = useState(false);
+  const [scores, setScores] = useState([]);
+  const [timeRemaining, setTimeRemaining] = useState(5 * 60 * 1000);
+  const [showUnoBtn, setShowUnoBtn] = useState(false);
+  const [unoCountdown, setUnoCountdown] = useState(2);
+  const [unoNotif, setUnoNotif] = useState(null);
+  
+  const unoTimerRef = useRef(null);
+  const unoCountRef = useRef(null);
+
+  const { topCard, currentPlayerId, hand, playerCounts } = gameState;
+  const isMyTurn = currentPlayerId === socket.id;
+
+  useEffect(() => {
+    socket.on('game_over', ({ winner, byPoints, scores }) => {
+      setWinner(winner);
+      setWinByPoints(!!byPoints);
+      setScores(scores || []);
+      confetti({ particleCount: 300, spread: 80, origin: { y: 0.6 } });
+    });
+
+    socket.on('time_update', ({ remaining }) => {
+      setTimeRemaining(remaining);
+    });
+
+    socket.on('uno_required', ({ playerId }) => {
+      if (playerId === socket.id) {
+        setShowUnoBtn(true);
+        setUnoCountdown(2);
+        if (unoCountRef.current) clearInterval(unoCountRef.current);
+        unoCountRef.current = setInterval(() => {
+          setUnoCountdown(prev => Math.max(0, prev - 1));
+        }, 1000);
+        if (unoTimerRef.current) clearTimeout(unoTimerRef.current);
+        unoTimerRef.current = setTimeout(() => {
+          setShowUnoBtn(false);
+          clearInterval(unoCountRef.current);
+        }, 2100);
+      }
+    });
+
+    socket.on('uno_called', ({ playerId }) => {
+      const name = playerCounts.find(p => p.id === playerId)?.name || 'Someone';
+      setUnoNotif({ text: `${name} called UNO! 🎉`, type: 'success' });
+      setTimeout(() => setUnoNotif(null), 2500);
+    });
+
+    socket.on('uno_penalty', ({ playerId }) => {
+      const name = playerId === socket.id ? 'You' : (playerCounts.find(p => p.id === playerId)?.name || 'Someone');
+      setUnoNotif({ text: `${name} missed UNO! +2 cards 😬`, type: 'penalty' });
+      setTimeout(() => setUnoNotif(null), 2500);
+    });
+
+    return () => {
+      socket.off('game_over');
+      socket.off('time_update');
+      socket.off('uno_required');
+      socket.off('uno_called');
+      socket.off('uno_penalty');
+      if (unoTimerRef.current) clearTimeout(unoTimerRef.current);
+      if (unoCountRef.current) clearInterval(unoCountRef.current);
+    };
+  }, [socket, playerCounts]);
+
+  const formatTime = (ms) => {
+    const totalSeconds = Math.ceil(ms / 1000);
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const isLowTime = timeRemaining <= 60000;
+  const others = playerCounts.filter(p => p.id !== socket.id);
+  const myInfo = playerCounts.find(p => p.id === socket.id);
+
+  const handleCardClick = (card) => {
+    if (!isMyTurn) return;
+    if (card.type === 'wild' || card.value === 'wild4') {
+      setSelectedCardId(card.id);
+      setShowColorPicker(true);
+    } else {
+      socket.emit('play_card', { roomId, cardId: card.id });
+    }
+  };
+
+  const selectColor = (color) => {
+    socket.emit('play_card', { roomId, cardId: selectedCardId, colorSelection: color });
+    setShowColorPicker(false);
+    setSelectedCardId(null);
+  };
+
+  // --- Styles ---
+  const s = {
+    scene: {
+      position: 'fixed', inset: 0,
+      background: 'radial-gradient(circle at center, #450a0a 0%, #1a0000 70%, #000 100%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      perspective: '1500px', overflow: 'hidden', fontFamily: "'Nunito', sans-serif"
+    },
+    table: {
+      position: 'absolute', width: '1100px', height: '650px',
+      background: 'radial-gradient(ellipse at center, rgba(239, 68, 68, 0.1) 0%, transparent 80%)',
+      borderRadius: '50%', transform: 'rotateX(60deg) translateY(60px)',
+      border: '2px solid rgba(255, 255, 255, 0.03)',
+      boxShadow: '0 0 120px rgba(0,0,0,0.9), inset 0 0 40px rgba(0,0,0,0.5)',
+      zIndex: 1
+    },
+    timer: {
+      position: 'fixed', top: '30px', right: '30px', zIndex: 500,
+      background: isLowTime ? 'rgba(239,68,68,0.2)' : 'rgba(0,0,0,0.4)',
+      backdropFilter: 'blur(10px)',
+      border: `1.5px solid ${isLowTime ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
+      borderRadius: '16px', padding: '10px 22px',
+      display: 'flex', alignItems: 'center', gap: '10px',
+      boxShadow: isLowTime ? '0 0 25px rgba(239,68,68,0.3)' : '0 10px 30px rgba(0,0,0,0.3)',
+      transition: 'all 0.5s'
+    },
+    notif: {
+      position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
+      zIndex: 1000, padding: '16px 36px', borderRadius: '50px',
+      fontWeight: 900, fontSize: '20px', letterSpacing: '1px',
+      background: unoNotif?.type === 'success' ? '#22c55e' : '#ef4444',
+      color: 'white', boxShadow: '0 15px 40px rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', gap: '10px'
+    }
+  };
+
+  if (winner) {
+    return (
+      <div style={{ ...s.scene, zIndex: 2000, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(20px)' }}>
+        <motion.div initial={{ scale: 0, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} 
+          style={{ background: '#0f172a', borderRadius: '40px', padding: '60px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', minWidth: '450px', boxShadow: '0 40px 100px rgba(0,0,0,0.8)' }}>
+          <Crown size={120} color="#facc15" style={{ margin: '0 auto 24px', filter: 'drop-shadow(0 0 20px rgba(250,204,21,0.4))' }} />
+          <h1 style={{ fontSize: '64px', fontWeight: 900, marginBottom: '8px', color: 'white' }}>{winner}</h1>
+          <p style={{ fontSize: '20px', color: '#94a3b8', marginBottom: '40px', letterSpacing: '4px', fontWeight: 700 }}>
+            {winByPoints ? '⏱ TIME LIMIT VICTORY' : '🏆 CHAMPION'}
+          </p>
+
+          {winByPoints && scores.length > 0 && (
+            <div style={{ marginBottom: '40px', textAlign: 'left', background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '24px' }}>
+              <h3 style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px', letterSpacing: '2px', fontWeight: 800 }}>FINAL STANDINGS</h3>
+              {scores.map((s, i) => (
+                <div key={i} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '12px 20px', marginBottom: '8px', borderRadius: '14px',
+                  background: i === 0 ? 'rgba(250,204,21,0.15)' : 'rgba(255,255,255,0.05)',
+                  border: i === 0 ? '1px solid rgba(250,204,21,0.4)' : '1px solid transparent'
+                }}>
+                  <span style={{ fontWeight: 800, fontSize: '16px' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '👤'} {s.name}</span>
+                  <span style={{ fontWeight: 900, color: i === 0 ? '#facc15' : '#94a3b8', fontSize: '18px' }}>{s.points} <small style={{fontSize: '10px'}}>PTS</small></span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button className="btn-start" style={{ width: 'auto', padding: '20px 60px' }} onClick={() => window.location.reload()}>PLAY AGAIN</button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={s.scene}>
+      <div style={s.table} />
+
+      {/* Modern Timer */}
+      <div style={s.timer}>
+        <Timer size={20} color={isLowTime ? '#f87171' : '#94a3b8'} />
+        <motion.span
+          animate={isLowTime ? { scale: [1, 1.1, 1] } : {}}
+          transition={{ repeat: Infinity, duration: 1 }}
+          style={{ fontWeight: 900, fontSize: '24px', color: 'white', letterSpacing: '1px' }}
+        >
+          {formatTime(timeRemaining)}
+        </motion.span>
+      </div>
+
+      {/* Notifications */}
+      <AnimatePresence>
+        {unoNotif && (
+          <motion.div initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }} style={s.notif}>
+            {unoNotif.type === 'penalty' ? <AlertTriangle size={24} /> : <Star size={24} fill="white" />}
+            {unoNotif.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Center Deck Area */}
+      <div style={{ position: 'relative', zIndex: 100, display: 'flex', alignItems: 'center', gap: '80px', transform: 'translateY(20px)' }}>
+        {/* Draw Pile */}
+        <div style={{ cursor: isMyTurn ? 'pointer' : 'default', perspective: '1000px' }} onClick={() => isMyTurn && socket.emit('draw_card', { roomId })}>
+          <div style={{ position: 'relative', transform: 'rotateY(-20deg) rotateX(10deg)' }}>
+            <Card isBack disabled />
+            <div style={{ position: 'absolute', top: '-4px', left: '-4px', width: '90px', height: '140px', background: '#000', border: '4px solid white', borderRadius: '8px', zIndex: -1, opacity: 0.5 }} />
+            <div style={{ position: 'absolute', bottom: '-30px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '2px' }}>DRAW</div>
+          </div>
+        </div>
+
+        {/* Discard Pile */}
+        <div style={{ perspective: '1000px' }}>
+          <AnimatePresence mode="wait">
+            <motion.div key={topCard.id} initial={{ y: -400, opacity: 0, rotate: 45 }} animate={{ y: 0, opacity: 1, rotate: 0 }} transition={{ type: 'spring', damping: 15 }} style={{ filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.6))' }}>
+              <Card card={topCard} disabled />
+              <div style={{ position: 'absolute', bottom: '-30px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', fontWeight: 900, color: 'rgba(255,255,255,0.4)', letterSpacing: '2px', whiteSpace: 'nowrap' }}>DISCARD</div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Opponents Orbiting */}
+      {others.map((player, idx) => {
+        const total = others.length;
+        const angle = (idx + 1) * (180 / (total + 1));
+        const rad = (angle + 180) * (Math.PI / 180);
+        const x = Math.cos(rad) * 450;
+        const y = Math.sin(rad) * 280;
+        const isActive = currentPlayerId === player.id;
+
+        return (
+          <div key={player.id} style={{ position: 'absolute', transform: `translate(${x}px, ${y}px)`, display: 'flex', alignItems: 'center', gap: '20px', zIndex: 10 }}>
+            {isActive && (
+              <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} style={{ position: 'absolute', right: '100%', marginRight: '20px', background: '#3b82f6', color: 'white', fontWeight: 900, padding: '6px 14px', borderRadius: '10px', fontSize: '11px', whiteSpace: 'nowrap', boxShadow: '0 0 20px rgba(59,130,246,0.4)' }}>
+                PLAYING <ArrowRight size={12} style={{ marginLeft: 4 }} />
+              </motion.div>
+            )}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                width: '74px', height: '74px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)',
+                border: `3px solid ${isActive ? '#facc15' : 'rgba(255,255,255,0.1)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
+                boxShadow: isActive ? '0 0 30px rgba(250,204,21,0.4)' : '0 10px 20px rgba(0,0,0,0.3)',
+                transition: 'all 0.3s', scale: isActive ? 1.1 : 1
+              }}>
+                {player.id.includes('bot') ? <Bot size={40} color="#c084fc" /> : <User size={40} color="#94a3b8" />}
+                <div style={{ position: 'absolute', top: -10, right: -10, background: 'white', color: 'black', fontWeight: 900, fontSize: '12px', padding: '2px 8px', borderRadius: '6px' }}>{player.count}</div>
+              </div>
+              <div style={{ marginTop: '10px', fontSize: '13px', fontWeight: 800, background: 'rgba(0,0,0,0.4)', padding: '4px 10px', borderRadius: '8px' }}>{player.name}</div>
+            </div>
+
+            {/* Fanned cards */}
+            <div style={{ position: 'relative', width: '100px', height: '60px' }}>
+              {Array.from({ length: Math.min(player.count, 6) }).map((_, i) => (
+                <div key={i} className="uno-card card-back" style={{ width: '35px', height: '55px', position: 'absolute', left: i * 10, zIndex: i, transform: `rotate(${(i - 2) * 6}deg)`, border: '2px solid white' }} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Local Player HUD */}
+      <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'flex-end', gap: '30px', zIndex: 1000 }}>
+        {/* Avatar */}
+        <div style={{ position: 'relative', textAlign: 'center', flexShrink: 0 }}>
+          {isMyTurn && (
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: '15px', background: '#facc15', color: '#000', fontWeight: 900, fontSize: '12px', padding: '6px 16px', borderRadius: '12px', whiteSpace: 'nowrap', boxShadow: '0 0 20px rgba(250,204,21,0.5)' }}>
+              <Star size={14} fill="black" style={{ verticalAlign: 'middle', marginRight: 4 }} /> YOUR TURN
+            </motion.div>
+          )}
+          <div style={{
+            width: '86px', height: '86px', borderRadius: '24px', background: 'rgba(255,255,255,0.07)',
+            border: `4px solid ${isMyTurn ? '#facc15' : 'rgba(255,255,255,0.1)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
+            boxShadow: isMyTurn ? '0 0 40px rgba(250,204,21,0.4)' : '0 15px 30px rgba(0,0,0,0.4)',
+            transition: 'all 0.3s'
+          }}>
+            <User size={48} color="#60a5fa" />
+            <div style={{ position: 'absolute', top: -12, right: -12, background: 'white', color: 'black', fontWeight: 900, fontSize: '14px', padding: '4px 10px', borderRadius: '8px' }}>{hand.length}</div>
+          </div>
+          <div style={{ marginTop: '12px', fontSize: '14px', fontWeight: 800, background: 'rgba(255,255,255,0.1)', padding: '5px 14px', borderRadius: '10px' }}>{myInfo?.name || 'You'}</div>
+        </div>
+
+        {/* Hand */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', height: '180px', position: 'relative', marginLeft: '10px' }}>
+          {hand.map((card, idx) => {
+            const rot = (idx - (hand.length - 1) / 2) * 6;
+            const yOff = Math.abs(idx - (hand.length - 1) / 2) * 6;
+            return (
+              <motion.div key={card.id} initial={{ y: 100, opacity: 0 }} animate={{ y: yOff, rotate: rot, opacity: 1 }} whileHover={{ y: -60, scale: 1.15, zIndex: 100 }} style={{ marginLeft: idx === 0 ? 0 : -45, cursor: isMyTurn ? 'pointer' : 'default', zIndex: idx }}>
+                <Card card={card} onClick={() => handleCardClick(card)} disabled={!isMyTurn} />
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* UNO Button */}
+      <AnimatePresence>
+        {showUnoBtn && (
+          <motion.div initial={{ scale: 0, y: 50 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0 }} style={{ position: 'fixed', bottom: '280px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000, textAlign: 'center' }}>
+            <div style={{ position: 'relative', width: '150px', height: '150px' }}>
+              <svg style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }} viewBox="0 0 140 140">
+                <circle cx="70" cy="70" r="62" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+                <motion.circle cx="70" cy="70" r="62" fill="none" stroke="#ef4444" strokeWidth="8" strokeDasharray={2 * Math.PI * 62} initial={{ strokeDashoffset: 0 }} animate={{ strokeDashoffset: 2 * Math.PI * 62 }} transition={{ duration: 2, ease: 'linear' }} strokeLinecap="round" />
+              </svg>
+              <button onClick={() => { socket.emit('call_uno', { roomId }); setShowUnoBtn(false); clearInterval(unoCountRef.current); clearTimeout(unoTimerRef.current); }}
+                style={{ position: 'absolute', inset: '10px', borderRadius: '50%', border: 'none', background: 'linear-gradient(135deg, #ef4444, #b91c1c)', color: 'white', fontWeight: 900, fontSize: '36px', fontStyle: 'italic', cursor: 'pointer', boxShadow: '0 0 40px rgba(239,68,68,0.7)', letterSpacing: '-1px' }}>
+                UNO!
+              </button>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 14, fontWeight: 800, color: '#fca5a5' }}>{unoCountdown}s LEFT!</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Color Picker */}
+      <AnimatePresence>
+        {showColorPicker && (
+          <div style={s.modalOverlay || { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, backdropFilter: 'blur(12px)' }}>
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ background: '#0f172a', borderRadius: '40px', padding: '50px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 50px 100px rgba(0,0,0,0.8)' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 900, marginBottom: '40px', letterSpacing: '3px', color: 'white' }}>PICK A COLOR</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                {[{ c: 'red', b: '#ef4444' }, { c: 'blue', b: '#3b82f6' }, { c: 'green', b: '#22c55e' }, { c: 'yellow', b: '#eab308' }].map(item => (
+                  <motion.div key={item.c} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => selectColor(item.c)} style={{ width: '120px', height: '120px', borderRadius: '24px', background: item.b, border: '6px solid white', cursor: 'pointer', boxShadow: '0 10px 20px rgba(0,0,0,0.3)' }} />
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default GameBoard;
