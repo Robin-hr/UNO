@@ -48,17 +48,20 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          fingerprint: ""
+          port: 22
+          use_insecure_cipher: true
+          debug: true
           source: "docker-compose.yml"
           target: "~/uno-app"
 
       - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          fingerprint: ""
+          port: 22
+          debug: true
           script: |
             cd ~/uno-app
             sudo docker compose pull
