@@ -130,7 +130,10 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room || !room.gameStarted) return;
     const gameState = room.gameState;
-    if (room.players[gameState.currentPlayerIndex].id !== socket.id) return;
+    if (room.players[gameState.currentPlayerIndex].id !== socket.id) {
+      console.log(`Rejected move: it is ${room.players[gameState.currentPlayerIndex].id}'s turn, but ${socket.id} tried to play.`);
+      return;
+    }
 
     const playerHand = gameState.hands[socket.id];
     const cardIndex = playerHand.findIndex(c => c.id === cardId);

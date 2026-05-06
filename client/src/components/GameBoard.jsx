@@ -94,7 +94,11 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   const myInfo = playerCounts.find(p => p.id === socket.id);
 
   const handleCardClick = (card) => {
-    if (!isMyTurn) return;
+    if (!isMyTurn) {
+      setUnoNotif({ text: "Wait! It's not your turn yet! ⏳", type: 'penalty' });
+      setTimeout(() => setUnoNotif(null), 2000);
+      return;
+    }
     if (card.type === 'wild' || card.value === 'wild4') {
       setSelectedCardId(card.id);
       setShowColorPicker(true);
