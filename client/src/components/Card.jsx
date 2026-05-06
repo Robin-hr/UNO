@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const Card = ({ card, onClick, isBack, disabled, style }) => {
+const Card = ({ card, onClick, isBack, disabled, style, ...motionProps }) => {
   const getCardColor = (color) => {
     switch (color) {
       case 'red': return '#ef4444';
@@ -24,14 +24,17 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
 
   if (isBack) {
     return (
-      <div style={{
-        width: '90px', height: '140px',
-        backgroundColor: '#000', borderRadius: '10px',
-        border: '4px solid white', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-        position: 'relative', overflow: 'hidden', ...style
-      }}>
+      <motion.div 
+        {...motionProps}
+        style={{
+          width: '90px', height: '140px',
+          backgroundColor: '#000', borderRadius: '10px',
+          border: '4px solid white', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+          position: 'relative', overflow: 'hidden', ...style
+        }}
+      >
         <div style={{
           width: '95%', height: '65%',
           backgroundColor: '#ef4444', borderRadius: '50%',
@@ -45,7 +48,7 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
             textShadow: '2px 2px 0 #000, -2px -2px 0 #fff'
           }}>UNO</span>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
@@ -53,7 +56,8 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
   const label = getCardLabel(card.value);
 
   return (
-    <div 
+    <motion.div 
+      {...motionProps}
       onClick={!disabled ? onClick : undefined}
       style={{
         width: '90px', height: '140px',
@@ -62,12 +66,14 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
         cursor: disabled ? 'default' : 'pointer',
-        overflow: 'hidden', userSelect: 'none', ...style
+        overflow: 'hidden', userSelect: 'none', 
+        touchAction: 'none', // Critical for mobile drag
+        ...style
       }}
     >
       {/* Corner Labels */}
-      <div style={{ position: 'absolute', top: 6, left: 8, fontSize: 18, fontWeight: 900, color: 'white' }}>{label}</div>
-      <div style={{ position: 'absolute', bottom: 6, right: 8, fontSize: 18, fontWeight: 900, color: 'white', transform: 'rotate(180deg)' }}>{label}</div>
+      <div style={{ position: 'absolute', top: 6, left: 8, fontSize: 18, fontWeight: 900, color: 'white', pointerEvents: 'none' }}>{label}</div>
+      <div style={{ position: 'absolute', bottom: 6, right: 8, fontSize: 18, fontWeight: 900, color: 'white', transform: 'rotate(180deg)', pointerEvents: 'none' }}>{label}</div>
 
       {/* Center Oval */}
       <div style={{
@@ -75,7 +81,8 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
         borderRadius: '50%', transform: 'rotate(-45deg)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 5px 15px rgba(0,0,0,0.2)'
+        boxShadow: '0 5px 15px rgba(0,0,0,0.2)',
+        pointerEvents: 'none'
       }}>
         <span style={{
           fontSize: label.length > 1 ? '44px' : '64px',
@@ -93,7 +100,7 @@ const Card = ({ card, onClick, isBack, disabled, style }) => {
         background: 'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 50%)',
         pointerEvents: 'none'
       }} />
-    </div>
+    </motion.div>
   );
 };
 

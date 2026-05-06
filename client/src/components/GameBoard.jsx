@@ -327,7 +327,21 @@ const GameBoard = ({ gameState, socket, roomId }) => {
             const rot = (idx - (hand.length - 1) / 2) * 6;
             const yOff = Math.abs(idx - (hand.length - 1) / 2) * 6;
             return (
-              <motion.div key={card.id} initial={{ y: 100, opacity: 0 }} animate={{ y: yOff, rotate: rot, opacity: 1 }} whileHover={{ y: -60, scale: 1.15, zIndex: 100 }} style={{ marginLeft: idx === 0 ? 0 : -45, cursor: isMyTurn ? 'pointer' : 'default', zIndex: idx }}>
+              <motion.div 
+                key={card.id} 
+                initial={{ y: 100, opacity: 0 }} 
+                animate={{ y: yOff, rotate: rot, opacity: 1 }} 
+                whileHover={{ y: -60, scale: 1.15, zIndex: 100 }} 
+                drag={isMyTurn ? "y" : false}
+                dragConstraints={{ top: -500, bottom: 0 }}
+                dragElastic={0.1}
+                onDragEnd={(event, info) => {
+                  if (info.point.y < window.innerHeight * 0.6) {
+                    handleCardClick(card);
+                  }
+                }}
+                style={{ marginLeft: idx === 0 ? 0 : -45, cursor: isMyTurn ? 'grab' : 'default', zIndex: idx }}
+              >
                 <Card card={card} onClick={() => handleCardClick(card)} disabled={!isMyTurn} />
               </motion.div>
             );
