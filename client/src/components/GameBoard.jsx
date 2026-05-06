@@ -107,6 +107,8 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   const isLowTime = timeRemaining <= 60000;
   const others = playerCounts.filter(p => p.id !== socket.id);
   const myInfo = playerCounts.find(p => p.id === socket.id);
+  const nextPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + playerCounts.length) % playerCounts.length;
+  const nextPlayerId = playerCounts[nextPlayerIndex]?.id;
 
   const handleCardClick = (card) => {
     if (!isMyTurn) {
@@ -258,21 +260,45 @@ const GameBoard = ({ gameState, socket, roomId }) => {
 
         return (
           <div key={player.id} style={{ position: 'absolute', transform: `translate(${x}px, ${y}px)`, display: 'flex', alignItems: 'center', gap: '20px', zIndex: 10 }}>
+          <div key={p.id} style={{ position: 'absolute', transform: `translate(${x}px, ${y}px)`, display: 'flex', alignItems: 'center', gap: '20px', zIndex: 10 }}>
             {isActive && (
               <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} style={{ position: 'absolute', right: '100%', marginRight: '20px', background: '#3b82f6', color: 'white', fontWeight: 900, padding: '6px 14px', borderRadius: '10px', fontSize: '11px', whiteSpace: 'nowrap', boxShadow: '0 0 20px rgba(59,130,246,0.4)' }}>
                 PLAYING <ArrowRight size={12} style={{ marginLeft: 4 }} />
               </motion.div>
             )}
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                width: '74px', height: '74px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)',
-                border: `3px solid ${isActive ? '#facc15' : 'rgba(255,255,255,0.1)'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
-                boxShadow: isActive ? '0 0 30px rgba(250,204,21,0.4)' : '0 10px 20px rgba(0,0,0,0.3)',
-                transition: 'all 0.3s', scale: isActive ? 1.1 : 1
-              }}>
-                {player.id.includes('bot') ? <Bot size={40} color="#c084fc" /> : <User size={40} color="#94a3b8" />}
-                <div style={{ position: 'absolute', top: -10, right: -10, background: 'white', color: 'black', fontWeight: 900, fontSize: '12px', padding: '2px 8px', borderRadius: '6px' }}>{player.count}</div>
+            <div key={p.id} style={{ position: 'relative', width: '140px', textAlign: 'center' }}>
+            {gameState.currentPlayerId === p.id && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1.1 }}
+                style={{
+                  position: 'absolute', inset: -8, borderRadius: '24px',
+                  background: 'radial-gradient(circle, rgba(239,68,68,0.3) 0%, transparent 70%)',
+                  boxShadow: '0 0 30px rgba(239,68,68,0.5)', zIndex: -1
+                }}
+                animate={{ boxShadow: ['0 0 20px rgba(239,68,68,0.3)', '0 0 40px rgba(239,68,68,0.6)', '0 0 20px rgba(239,68,68,0.3)'] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+            )}
+            {nextPlayerId === p.id && gameState.currentPlayerId !== p.id && (
+              <motion.div
+                animate={{ opacity: [0.1, 0.4, 0.1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                style={{
+                  position: 'absolute', inset: -4, borderRadius: '20px',
+                  border: '2px dashed rgba(255,255,255,0.2)', zIndex: -1
+                }}
+              />
+            )}
+            <div style={{
+              width: '72px', height: '72px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)',
+              border: `3px solid ${gameState.currentPlayerId === p.id ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
+              position: 'relative', transition: 'all 0.3s',
+              transform: gameState.currentPlayerId === p.id ? 'scale(1.1)' : 'scale(1)'
+            }}>
+                {p.id.includes('bot') ? <Bot size={40} color="#c084fc" /> : <User size={40} color="#94a3b8" />}
+                <div style={{ position: 'absolute', top: -10, right: -10, background: 'white', color: 'black', fontWeight: 900, fontSize: '12px', padding: '2px 8px', borderRadius: '6px' }}>{p.count}</div>
                 {isActive && (
                   <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: '#f87171', color: 'white', fontWeight: 900, fontSize: '10px', padding: '2px 6px', borderRadius: '4px', boxShadow: '0 0 10px rgba(248,113,113,0.5)' }}>
                     {turnTimeRemaining}s
@@ -299,16 +325,21 @@ const GameBoard = ({ gameState, socket, roomId }) => {
         {/* Avatar */}
         <div style={{ position: 'relative', textAlign: 'center', flexShrink: 0 }}>
           {isMyTurn && (
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: '15px', background: '#facc15', color: '#000', fontWeight: 900, fontSize: '12px', padding: '6px 16px', borderRadius: '12px', whiteSpace: 'nowrap', boxShadow: '0 0 20px rgba(250,204,21,0.5)' }}>
-              <Star size={14} fill="black" style={{ verticalAlign: 'middle', marginRight: 4 }} /> YOUR TURN
+            <motion.div 
+              initial={{ scale: 0, y: 10 }} 
+              animate={{ scale: 1, y: 0, boxShadow: ['0 0 10px rgba(250,204,21,0.3)', '0 0 30px rgba(250,204,21,0.6)', '0 0 10px rgba(250,204,21,0.3)'] }} 
+              transition={{ duration: 1.5, repeat: Infinity }}
+              style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', marginBottom: '15px', background: '#facc15', color: '#000', fontWeight: 900, fontSize: '11px', padding: '5px 14px', borderRadius: '10px', whiteSpace: 'nowrap', zIndex: 10 }}>
+              <Star size={12} fill="black" style={{ verticalAlign: 'middle', marginRight: 4 }} /> YOUR TURN
             </motion.div>
           )}
           <div style={{
-            width: '86px', height: '86px', borderRadius: '24px', background: 'rgba(255,255,255,0.07)',
-            border: `4px solid ${isMyTurn ? '#facc15' : 'rgba(255,255,255,0.1)'}`,
+            width: '90px', height: '90px', borderRadius: '26px', background: 'rgba(255,255,255,0.07)',
+            border: `5px solid ${isMyTurn ? '#facc15' : 'rgba(255,255,255,0.1)'}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
-            boxShadow: isMyTurn ? '0 0 40px rgba(250,204,21,0.4)' : '0 15px 30px rgba(0,0,0,0.4)',
-            transition: 'all 0.3s'
+            boxShadow: isMyTurn ? '0 0 50px rgba(250,204,21,0.5)' : '0 15px 30px rgba(0,0,0,0.4)',
+            transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            transform: isMyTurn ? 'scale(1.1) translateY(-5px)' : 'scale(1)'
           }}>
             <User size={48} color="#60a5fa" />
             <div style={{ position: 'absolute', top: -12, right: -12, background: 'white', color: 'black', fontWeight: 900, fontSize: '14px', padding: '4px 10px', borderRadius: '8px' }}>{hand.length}</div>
@@ -329,8 +360,8 @@ const GameBoard = ({ gameState, socket, roomId }) => {
             return (
               <motion.div 
                 key={card.id} 
-                initial={{ y: 100, opacity: 0 }} 
-                animate={{ y: yOff, rotate: rot, opacity: 1 }} 
+                initial={{ x: -300, y: -400, opacity: 0, rotate: 0, scale: 0.5 }} 
+                animate={{ x: 0, y: yOff, rotate: rot, opacity: 1, scale: 1 }} 
                 whileHover={{ y: -60, scale: 1.15, zIndex: 100 }} 
                 drag={isMyTurn ? "y" : false}
                 dragConstraints={{ top: -500, bottom: 0 }}
@@ -341,6 +372,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
                   }
                 }}
                 style={{ marginLeft: idx === 0 ? 0 : -45, cursor: isMyTurn ? 'grab' : 'default', zIndex: idx }}
+                transition={{ type: 'spring', damping: 15, stiffness: 100 }}
               >
                 <Card card={card} onClick={() => handleCardClick(card)} disabled={!isMyTurn} />
               </motion.div>
