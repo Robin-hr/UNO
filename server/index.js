@@ -204,8 +204,14 @@ io.on('connection', (socket) => {
     const card = playerHand[cardIndex];
 
     // Official Rules: No Stacking.
+    // Stacking Rules
     if (gameState.pendingDraws > 0) {
-      return socket.emit('error', 'You must draw cards!');
+      const isStackingDraw2 = card.value === 'draw2' && gameState.topCard.value === 'draw2';
+      const isStackingWild4 = card.value === 'wild4' && gameState.topCard.value === 'wild4';
+      
+      if (!isStackingDraw2 && !isStackingWild4) {
+        return socket.emit('error', `You must draw ${gameState.pendingDraws} cards or stack a similar card!`);
+      }
     }
 
     if (isValidMove(card, gameState.topCard)) {
@@ -309,9 +315,9 @@ io.on('connection', (socket) => {
     // Official Rules: Draw and Skip
     if (card.value === 'draw2' || card.value === 'wild4') {
       const penalty = card.value === 'draw2' ? 2 : 4;
-      gameState.pendingDraws = penalty;
+      gameState.pendingDraws += penalty; // Stack the penalty
       
-      // Advance to the player who must draw
+      // Advance to the player who must draw or stack
       gameState.currentPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + room.players.length) % room.players.length;
     } else {
       // Normal turn advancement
@@ -344,7 +350,13 @@ io.on('connection', (socket) => {
     const playerId = room.players[gameState.currentPlayerIndex].id;
     const hand = gameState.hands[playerId];
 
-    const validCardIndex = hand.findIndex(c => isValidMove(c, gameState.topCard));
+    const validCardIndex = hand.findIndex(c => {
+      if (gameState.pendingDraws > 0) {
+        return (c.value === 'draw2' && gameState.topCard.value === 'draw2') || 
+               (c.value === 'wild4' && gameState.topCard.value === 'wild4');
+      }
+      return isValidMove(c, gameState.topCard);
+    });
     
     if (validCardIndex !== -1) {
       const card = hand.splice(validCardIndex, 1)[0];
@@ -385,7 +397,13 @@ io.on('connection', (socket) => {
     const botId = room.players[gameState.currentPlayerIndex].id;
     const botHand = gameState.hands[botId];
 
-    let cardToPlay = botHand.find(card => isValidMove(card, gameState.topCard));
+    let cardToPlay = botHand.find(card => {
+      if (gameState.pendingDraws > 0) {
+        return (card.value === 'draw2' && gameState.topCard.value === 'draw2') || 
+               (card.value === 'wild4' && gameState.topCard.value === 'wild4');
+      }
+      return isValidMove(card, gameState.topCard);
+    });
 
     if (!cardToPlay && gameState.pendingDraws === 0) {
       const drawn = drawCardForPlayer(room, botId);
