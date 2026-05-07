@@ -508,6 +508,9 @@ io.on('connection', (socket) => {
       const state = {
         topCard: room.gameState.topCard,
         currentPlayerId: room.players[room.gameState.currentPlayerIndex].id,
+        currentPlayerIndex: room.gameState.currentPlayerIndex,
+        direction: room.gameState.direction,
+        playedCards: room.gameState.playedCards,
         hand: room.gameState.hands[player.id],
         pendingDraws: room.gameState.pendingDraws,
         playerCounts: room.players.map(p => ({

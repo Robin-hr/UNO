@@ -32,7 +32,15 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   const unoTimerRef = useRef(null);
   const unoCountRef = useRef(null);
 
-  const { topCard, currentPlayerId, hand = [], playerCounts = [], pendingDraws = 0 } = gameState || {};
+  const { 
+    topCard, 
+    currentPlayerId, 
+    currentPlayerIndex = 0,
+    direction = 1,
+    hand = [], 
+    playerCounts = [], 
+    pendingDraws = 0 
+  } = gameState || {};
   const isMyTurn = currentPlayerId === socket.id;
 
   const isLowTime = timeRemaining <= 60000;
@@ -163,7 +171,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   };
 
   const others = playerCounts.filter(p => p.id !== socket.id);
-  const nextPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + playerCounts.length) % playerCounts.length;
+  const nextPlayerIndex = (currentPlayerIndex + direction + playerCounts.length) % (playerCounts.length || 1);
   const nextPlayerId = playerCounts[nextPlayerIndex]?.id;
 
   const handleCardClick = (card) => {
