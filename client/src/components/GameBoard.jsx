@@ -162,9 +162,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
     return `${m}:${s}`;
   };
 
-  const isLowTime = timeRemaining <= 60000;
   const others = playerCounts.filter(p => p.id !== socket.id);
-  const myInfo = playerCounts.find(p => p.id === socket.id);
   const nextPlayerIndex = (gameState.currentPlayerIndex + gameState.direction + playerCounts.length) % playerCounts.length;
   const nextPlayerId = playerCounts[nextPlayerIndex]?.id;
 
@@ -190,8 +188,6 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   };
 
   // --- Styles ---
-  };
-
   const s = styles;
 
   if (winner) {
