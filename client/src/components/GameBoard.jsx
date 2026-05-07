@@ -243,6 +243,18 @@ const GameBoard = ({ gameState, socket, roomId }) => {
     );
   }
 
+  if (!gameState || !topCard) {
+    return (
+      <div style={s.scene}>
+        <div style={{ color: 'white', fontSize: '24px', fontWeight: 900, textAlign: 'center' }}>
+          <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+            SYNCHRONIZING GAME STATE...
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={s.scene}>
       <div style={s.table} />

@@ -516,6 +516,7 @@ io.on('connection', (socket) => {
         playerCounts: room.players.map(p => ({
           id: p.id,
           name: p.name,
+          host: p.host,
           count: room.gameState.hands[p.id].length
         }))
       };
