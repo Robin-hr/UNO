@@ -27,18 +27,18 @@ const GameBoard = ({ gameState, socket, roomId }) => {
   const [unoNotif, setUnoNotif] = useState(null);
   const [swapOptions, setSwapOptions] = useState(null);
   const [turnTimeRemaining, setTurnTimeRemaining] = useState(10);
-  
+
   const unoTimerRef = useRef(null);
   const unoCountRef = useRef(null);
 
-  const { 
-    topCard, 
-    currentPlayerId, 
+  const {
+    topCard,
+    currentPlayerId,
     currentPlayerIndex = 0,
     direction = 1,
-    hand = [], 
-    playerCounts = [], 
-    pendingDraws = 0 
+    hand = [],
+    playerCounts = [],
+    pendingDraws = 0
   } = gameState || {};
 
   const isMyTurn = currentPlayerId === socket.id;
@@ -179,7 +179,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
       setTimeout(() => setUnoNotif(null), 2000);
       return;
     }
-    
+
     if (['wild', 'wild4', 'wildShuffle', 'wildCustom'].includes(card.value)) {
       setSelectedCardId(card.id);
       setShowColorPicker(true);
@@ -198,15 +198,15 @@ const GameBoard = ({ gameState, socket, roomId }) => {
 
   if (winner) {
     const isHost = myInfo?.host || false;
-    
+
     return (
       <div style={{ ...s.scene, zIndex: 2000, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(20px)' }}>
-        <motion.div initial={{ scale: 0, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} 
+        <motion.div initial={{ scale: 0, rotate: -10 }} animate={{ scale: 1, rotate: 0 }}
           style={{ background: '#0f172a', borderRadius: '40px', padding: '60px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', minWidth: '500px', boxShadow: '0 40px 100px rgba(0,0,0,0.8)' }}>
           <Crown size={120} color="#facc15" style={{ margin: '0 auto 24px', filter: 'drop-shadow(0 0 20px rgba(250,204,21,0.4))' }} />
           <h1 style={{ fontSize: '56px', fontWeight: 900, marginBottom: '8px', color: 'white' }}>{winner}</h1>
           <p style={{ fontSize: '20px', color: '#94a3b8', marginBottom: '40px', letterSpacing: '4px', fontWeight: 700 }}>
-            {isFinalWin ? '🏆 ULTIMATE CHAMPION' : `🎉 ROUND WINNER (+${roundPoints} pts)`}
+            {isFinalWin ? '🏆 ULTIMATE CHAMPION' : `🎉 Jechitan Daa.... Veliya Ponga Daa..... Jokerzzz.....🤡🤡🤡🤡(+${roundPoints} pts)`}
           </p>
 
           <div style={{ marginBottom: '40px', textAlign: 'left', background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '24px' }}>
@@ -276,6 +276,31 @@ const GameBoard = ({ gameState, socket, roomId }) => {
         )}
       </AnimatePresence>
 
+      {/* Direction Indicator */}
+      <div style={{ position: 'absolute', width: '600px', height: '600px', pointerEvents: 'none', zIndex: 2 }}>
+        <motion.div
+          key={direction}
+          animate={{ rotate: direction === 1 ? [0, 360] : [0, -360] }}
+          transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+          style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <svg viewBox="0 0 200 200" style={{ width: '80%', height: '80%' }}>
+            <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" strokeDasharray="4 8" />
+            {[0, 45, 90, 135, 180, 225, 270, 315].map(deg => (
+              <g key={deg} transform={`rotate(${deg} 100 100) translate(0 -90) rotate(${direction === 1 ? 90 : -90})`}>
+                <path 
+                  d="M -6 -4 L 0 2 L 6 -4" 
+                  fill="none" 
+                  stroke={direction === 1 ? "rgba(59,130,246,0.4)" : "rgba(239,68,68,0.4)"} 
+                  strokeWidth="3" 
+                  strokeLinecap="round" 
+                />
+              </g>
+            ))}
+          </svg>
+        </motion.div>
+      </div>
+
       <div style={{ position: 'relative', zIndex: 100, display: 'flex', alignItems: 'center', gap: '80px', transform: 'translateY(20px)' }}>
         <div style={{ cursor: isMyTurn ? 'pointer' : 'default', perspective: '1000px' }} onClick={() => isMyTurn && socket.emit('draw_card', { roomId })}>
           <div style={{ position: 'relative', transform: 'rotateY(-20deg) rotateX(10deg)' }}>
@@ -318,29 +343,29 @@ const GameBoard = ({ gameState, socket, roomId }) => {
               </motion.div>
             )}
             <div style={{ position: 'relative', width: '140px', textAlign: 'center' }}>
-            {currentPlayerId === player.id && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ 
-                  opacity: 1, 
-                  scale: 1.1,
-                  boxShadow: ['0 0 20px rgba(239,68,68,0.3)', '0 0 40px rgba(239,68,68,0.6)', '0 0 20px rgba(239,68,68,0.3)'] 
-                }}
-                style={{
-                  position: 'absolute', inset: -8, borderRadius: '24px',
-                  background: 'radial-gradient(circle, rgba(239,68,68,0.3) 0%, transparent 70%)',
-                  boxShadow: '0 0 30px rgba(239,68,68,0.5)', zIndex: -1
-                }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              />
-            )}
-            <div style={{
-              width: '72px', height: '72px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)',
-              border: `3px solid ${currentPlayerId === player.id ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
-              position: 'relative', transition: 'all 0.3s',
-              transform: currentPlayerId === player.id ? 'scale(1.1)' : 'scale(1)'
-            }}>
+              {currentPlayerId === player.id && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{
+                    opacity: 1,
+                    scale: 1.1,
+                    boxShadow: ['0 0 20px rgba(239,68,68,0.3)', '0 0 40px rgba(239,68,68,0.6)', '0 0 20px rgba(239,68,68,0.3)']
+                  }}
+                  style={{
+                    position: 'absolute', inset: -8, borderRadius: '24px',
+                    background: 'radial-gradient(circle, rgba(239,68,68,0.3) 0%, transparent 70%)',
+                    boxShadow: '0 0 30px rgba(239,68,68,0.5)', zIndex: -1
+                  }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              )}
+              <div style={{
+                width: '72px', height: '72px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)',
+                border: `3px solid ${currentPlayerId === player.id ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
+                position: 'relative', transition: 'all 0.3s',
+                transform: currentPlayerId === player.id ? 'scale(1.1)' : 'scale(1)'
+              }}>
                 {player.id.includes('bot') ? <Bot size={40} color="#c084fc" /> : <User size={40} color="#94a3b8" />}
                 <div style={{ position: 'absolute', top: -10, right: -10, background: 'white', color: 'black', fontWeight: 900, fontSize: '12px', padding: '2px 8px', borderRadius: '6px' }}>{player.count}</div>
                 {isActive && (
@@ -355,7 +380,7 @@ const GameBoard = ({ gameState, socket, roomId }) => {
             <div style={{ position: 'relative', width: '100px', height: '60px' }}>
               {Array.from({ length: Math.min(player.count, 6) }).map((_, i) => (
                 <div key={i} style={{ position: 'absolute', left: i * 12, zIndex: i, transform: `rotate(${(i - 2) * 8}deg)` }}>
-                   <Card isBack style={{ width: '40px', height: '60px', borderWidth: '2px' }} />
+                  <Card isBack style={{ width: '40px', height: '60px', borderWidth: '2px' }} />
                 </div>
               ))}
             </div>
@@ -366,9 +391,9 @@ const GameBoard = ({ gameState, socket, roomId }) => {
       <div style={{ position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'flex-end', gap: '30px', zIndex: 1000 }}>
         <div style={{ position: 'relative', textAlign: 'center', flexShrink: 0 }}>
           {isMyTurn && (
-            <motion.div 
-              initial={{ scale: 0, y: 10 }} 
-              animate={{ scale: 1, y: 0, boxShadow: ['0 0 10px rgba(250,204,21,0.3)', '0 0 30px rgba(250,204,21,0.6)', '0 0 10px rgba(250,204,21,0.3)'] }} 
+            <motion.div
+              initial={{ scale: 0, y: 10 }}
+              animate={{ scale: 1, y: 0, boxShadow: ['0 0 10px rgba(250,204,21,0.3)', '0 0 30px rgba(250,204,21,0.6)', '0 0 10px rgba(250,204,21,0.3)'] }}
               transition={{ duration: 1.5, repeat: Infinity }}
               style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', marginBottom: '15px', background: '#facc15', color: '#000', fontWeight: 900, fontSize: '11px', padding: '5px 14px', borderRadius: '10px', whiteSpace: 'nowrap', zIndex: 10 }}>
               <Star size={12} fill="black" style={{ verticalAlign: 'middle', marginRight: 4 }} /> YOUR TURN
@@ -398,11 +423,11 @@ const GameBoard = ({ gameState, socket, roomId }) => {
             const rot = (idx - (hand.length - 1) / 2) * 6;
             const yOff = Math.abs(idx - (hand.length - 1) / 2) * 6;
             return (
-              <motion.div 
-                key={card.id} 
-                initial={{ x: -300, y: -400, opacity: 0, rotate: 0, scale: 0.5 }} 
-                animate={{ x: 0, y: yOff, rotate: rot, opacity: 1, scale: 1 }} 
-                whileHover={{ y: -60, scale: 1.15, zIndex: 100 }} 
+              <motion.div
+                key={card.id}
+                initial={{ x: -300, y: -400, opacity: 0, rotate: 0, scale: 0.5 }}
+                animate={{ x: 0, y: yOff, rotate: rot, opacity: 1, scale: 1 }}
+                whileHover={{ y: -60, scale: 1.15, zIndex: 100 }}
                 drag={isMyTurn ? "y" : false}
                 dragConstraints={{ top: -500, bottom: 0 }}
                 dragElastic={0.1}
